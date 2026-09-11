@@ -1,0 +1,6 @@
+{
+  "name": "Oriccia - Catálogo Digital",
+  "description": "Catálogo de artículos digitales, plantillas de diseño y agendas interactivas para Oriccia con gestión en Google Sheets y pedidos directos por WhatsApp.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
