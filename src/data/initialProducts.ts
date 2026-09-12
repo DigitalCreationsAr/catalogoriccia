@@ -16,9 +16,9 @@ export const INITIAL_PRODUCTS: Product[] = [];
 export const INITIAL_SETTINGS: AdminSettings = {
   whatsappNumber: '+5491123456789', // Editable in admin panel
   whatsappMessageTemplate: '¡Hola Oriccia! Me interesa adquirir *{productName}* ({price} {currency}). ¿Podrías indicarme los métodos de pago disponibles?',
-  spreadsheetId: '',
+  spreadsheetId: '1oHNcbXnSOKVdzLEucmrr5WVlYbONrIlBzJVt36ztXws',
   spreadsheetName: 'Oriccia - Catálogo e Inventario Digital',
-  spreadsheetUrl: '',
+  spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/1oHNcbXnSOKVdzLEucmrr5WVlYbONrIlBzJVt36ztXws/edit',
   authorizedEmails: ['rara.digitalcreations@gmail.com'],
   lastSyncTime: null,
 };

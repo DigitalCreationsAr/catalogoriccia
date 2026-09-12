@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Product, Category, AdminSettings } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_SETTINGS } from './data/initialProducts';
 import { initAuth } from './lib/firebase';
-import { logWhatsAppInquiry } from './lib/googleSheets';
+import { logWhatsAppInquiry, fetchPublicProductsFromSheet } from './lib/googleSheets';
 import { User } from 'firebase/auth';
 import { Navbar } from './components/Navbar';
 import { ProductCard } from './components/ProductCard';
@@ -64,7 +64,14 @@ export default function App() {
     const saved = localStorage.getItem('oriccia_settings');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (!parsed.spreadsheetId && INITIAL_SETTINGS.spreadsheetId) {
+          parsed.spreadsheetId = INITIAL_SETTINGS.spreadsheetId;
+        }
+        if (!parsed.spreadsheetUrl && INITIAL_SETTINGS.spreadsheetUrl) {
+          parsed.spreadsheetUrl = INITIAL_SETTINGS.spreadsheetUrl;
+        }
+        return parsed;
       } catch (e) {
         console.error('Error loading saved settings', e);
       }
@@ -75,6 +82,7 @@ export default function App() {
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [isLoadingPublicCatalog, setIsLoadingPublicCatalog] = useState(false);
 
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
@@ -85,6 +93,32 @@ export default function App() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [demoProduct, setDemoProduct] = useState<Product | null>(null);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+
+  // Auto-sync products from public Google Sheet on load (for incognito, new visitors, and mobile)
+  useEffect(() => {
+    const sheetId =
+      settings.spreadsheetId || INITIAL_SETTINGS.spreadsheetId || '1oHNcbXnSOKVdzLEucmrr5WVlYbONrIlBzJVt36ztXws';
+    if (!sheetId) return;
+
+    setIsLoadingPublicCatalog(true);
+    fetchPublicProductsFromSheet(sheetId)
+      .then((res) => {
+        if (res.success && res.data && res.data.length > 0) {
+          setProducts(res.data);
+          try {
+            localStorage.setItem('oriccia_products', JSON.stringify(res.data));
+          } catch (storageErr) {
+            console.warn('Could not save fetched products to localStorage', storageErr);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not auto-sync catalog from public sheet:', err);
+      })
+      .finally(() => {
+        setIsLoadingPublicCatalog(false);
+      });
+  }, [settings.spreadsheetId]);
 
   // Initialize Firebase Auth listener
   useEffect(() => {
@@ -263,7 +297,17 @@ export default function App() {
         </div>
 
         {/* Product Cards Grid (Small, delicate, romantic) */}
-        {products.length === 0 ? (
+        {isLoadingPublicCatalog && products.length === 0 ? (
+          <div className="text-center py-20 px-6 bg-white/70 rounded-2xl border border-[#E8E1D7] max-w-sm mx-auto space-y-3.5 shadow-2xs">
+            <div className="w-7 h-7 border-2 border-[#1C3B2B]/20 border-t-[#1C3B2B] rounded-full animate-spin mx-auto" />
+            <h3 className="text-sm font-semibold text-[#1C3B2B] font-romantic">
+              Cargando catálogo de productos...
+            </h3>
+            <p className="text-xs text-[#8C948D]">
+              Obteniendo los artículos más recientes desde tu planilla
+            </p>
+          </div>
+        ) : products.length === 0 ? (
           <div className="text-center py-16 px-6 bg-white/80 rounded-2xl border border-[#E8E1D7] max-w-lg mx-auto space-y-3.5 shadow-2xs">
             <span className="text-3xl">✨</span>
             <h3 className="text-lg font-semibold text-[#1C3B2B] font-romantic">

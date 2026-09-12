@@ -447,6 +447,109 @@ export async function saveProductsToSheet(
 }
 
 /**
+ * Fetches products publicly from a shared Google Sheet (requires "Anyone with link - Viewer").
+ * Works in Incognito, on mobile devices, and for all public visitors without needing login.
+ */
+export async function fetchPublicProductsFromSheet(
+  spreadsheetId: string
+): Promise<SheetOperationResult<Product[]>> {
+  if (!spreadsheetId) {
+    return { success: false, error: 'ID de planilla no provisto.' };
+  }
+
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=Catalogo_Productos`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      return { success: false, error: 'No se pudo acceder a la planilla pública.' };
+    }
+
+    const text = await res.text();
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end === -1) {
+      return { success: false, error: 'Respuesta inválida de Google Sheets.' };
+    }
+
+    const json = JSON.parse(text.substring(start, end + 1));
+    const rawRows = json.table?.rows || [];
+    const products: Product[] = [];
+
+    for (let index = 0; index < rawRows.length; index++) {
+      const c = rawRows[index]?.c || [];
+      const getVal = (colIndex: number): string => {
+        const cell = c[colIndex];
+        if (!cell) return '';
+        if (cell.f !== undefined && cell.f !== null) return String(cell.f).trim();
+        if (cell.v !== undefined && cell.v !== null) return String(cell.v).trim();
+        return '';
+      };
+
+      const id = getVal(0) || `oriccia-${Date.now().toString().slice(-4)}`;
+      const name = getVal(1);
+      if (!name) continue;
+
+      const category = getVal(2) || 'Invitaciones Digitales';
+      const eventType = getVal(3) || '';
+      const priceRaw = getVal(4);
+      const price = parseFloat(priceRaw.replace(/[^0-9.]/g, '') || '0') || 0;
+      const currency = getVal(5) || 'USD';
+      const photoUrl = getVal(6) || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80';
+      const description = getVal(7) || '';
+      const featuresStr = getVal(8);
+      const features = featuresStr
+        ? featuresStr.split('|').map((f) => f.trim()).filter(Boolean)
+        : [
+            'Hipervínculos interactivos fluidos',
+            'Diseño responsivo para móviles y tablets',
+            'Botón de confirmación de asistencia (RSVP)',
+          ];
+      const tagsStr = getVal(9);
+      const tags = tagsStr
+        ? tagsStr.split(',').map((t) => t.trim()).filter(Boolean)
+        : ['Digital', 'Minimalista', 'Elegante'];
+      const demoUrl = getVal(10) || '';
+      const rawStatus = (getVal(11) || 'activo').toLowerCase();
+      const status: 'activo' | 'borrador' = rawStatus === 'borrador' ? 'borrador' : 'activo';
+      const updatedAt = getVal(12) || new Date().toISOString().split('T')[0];
+      const isFreeStr = getVal(13).toUpperCase();
+      const isFree =
+        isFreeStr === 'SI' || isFreeStr === 'SÍ' || isFreeStr === 'TRUE' || isFreeStr === '1';
+      const downloadUrl = getVal(14) || '';
+
+      products.push({
+        id,
+        name,
+        category,
+        eventType,
+        price,
+        currency,
+        photoUrl,
+        description,
+        features,
+        tags,
+        demoUrl,
+        status,
+        updatedAt,
+        isFree,
+        downloadUrl,
+      });
+    }
+
+    return {
+      success: true,
+      data: products,
+    };
+  } catch (error: any) {
+    console.error('Error in fetchPublicProductsFromSheet:', error);
+    return {
+      success: false,
+      error: error.message || 'Error inesperado al leer planilla pública.',
+    };
+  }
+}
+
+/**
  * Appends a customer inquiry record when someone clicks WhatsApp order button.
  */
 export async function logWhatsAppInquiry(
