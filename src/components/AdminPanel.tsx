@@ -28,6 +28,7 @@ import {
   fetchProductsFromSheet,
   saveProductsToSheet,
 } from '../lib/googleSheets';
+import { uploadImageToGoogleDrive } from '../lib/googleDrive';
 
 interface AdminPanelProps {
   user: User;
@@ -132,10 +133,10 @@ export function AdminPanel({
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 1200;
+        const MAX_WIDTH = 900;
+        const MAX_HEIGHT = 900;
         let width = img.width;
         let height = img.height;
 
@@ -156,8 +157,19 @@ export function AdminPanel({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.86);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.80);
           setCurrentProduct((prev) => (prev ? { ...prev, photoUrl: compressedDataUrl } : prev));
+
+          // If Google session is active, upload to Google Drive to keep URLs lightweight and permanent
+          if (token) {
+            uploadImageToGoogleDrive(token, compressedDataUrl, `oriccia_${Date.now()}.jpg`)
+              .then((uploadRes) => {
+                if (uploadRes.success && uploadRes.url) {
+                  setCurrentProduct((prev) => (prev ? { ...prev, photoUrl: uploadRes.url } : prev));
+                }
+              })
+              .catch((err) => console.warn('Background Google Drive upload error:', err));
+          }
         }
         setIsProcessingImage(false);
       };
@@ -371,7 +383,7 @@ export function AdminPanel({
     setIsEditingProduct(true);
   };
 
-  const handleSaveProduct = (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentProduct?.name) return;
     if (!currentProduct.photoUrl) {
@@ -386,6 +398,27 @@ export function AdminPanel({
       return;
     }
 
+    let finalPhotoUrl = currentProduct.photoUrl;
+
+    // If photo is still a raw data:image/ base64 string, upload to Google Drive if token is available
+    if (token && finalPhotoUrl.startsWith('data:image/')) {
+      setIsProcessingImage(true);
+      try {
+        const uploadRes = await uploadImageToGoogleDrive(
+          token,
+          finalPhotoUrl,
+          `${currentProduct.id || 'producto'}_${Date.now()}.jpg`
+        );
+        if (uploadRes.success && uploadRes.url) {
+          finalPhotoUrl = uploadRes.url;
+        }
+      } catch (err) {
+        console.warn('Could not upload photo to Google Drive during product save:', err);
+      } finally {
+        setIsProcessingImage(false);
+      }
+    }
+
     const updatedList = [...products];
     const index = updatedList.findIndex((p) => p.id === currentProduct.id);
     const isInvitacion = currentProduct.category?.trim().toLowerCase() === 'invitaciones digitales';
@@ -394,7 +427,7 @@ export function AdminPanel({
       id: currentProduct.id || `oriccia-${Date.now().toString().slice(-4)}`,
       name: currentProduct.name || (isFree ? 'Nuevo Recurso Gratuito' : 'Nuevo Producto'),
       description: currentProduct.description || '',
-      photoUrl: currentProduct.photoUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
+      photoUrl: finalPhotoUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
       price: isFree ? 0 : (Number(currentProduct.price) || 0),
       currency: currentProduct.currency || 'USD',
       category: currentProduct.category || (isFree ? 'Freebies & Imprimibles' : 'Invitaciones Digitales'),
@@ -420,7 +453,13 @@ export function AdminPanel({
 
     // Auto push to sheets if sheet is linked
     if (token && settings.spreadsheetId) {
-      saveProductsToSheet(token, settings.spreadsheetId, updatedList).catch(console.error);
+      saveProductsToSheet(token, settings.spreadsheetId, updatedList)
+        .then((res) => {
+          if (res.success) {
+            onUpdateProducts([...updatedList]);
+          }
+        })
+        .catch(console.error);
     }
   };
 
@@ -581,6 +620,7 @@ export function AdminPanel({
         setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
 
         if (result.success) {
+          onUpdateProducts([...products]);
           onUpdateSettings({
             ...settings,
             lastSyncTime: new Date().toLocaleTimeString('es-ES'),

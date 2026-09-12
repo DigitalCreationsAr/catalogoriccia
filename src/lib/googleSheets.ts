@@ -1,9 +1,26 @@
 import { Product } from '../types';
+import { uploadImageToGoogleDrive } from './googleDrive';
 
 export interface SheetOperationResult<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+/**
+ * Ensures that no cell content exceeds Google Sheets' 50,000 character limit.
+ * If an un-uploaded base64 string is encountered, replaces it with a clean fallback URL so Sheets never throws a 400 error.
+ */
+function sanitizeSheetCell(val: any, isPhoto = false): string {
+  if (val === null || val === undefined) return '';
+  const str = String(val);
+  if (str.length > 48000) {
+    if (isPhoto || str.startsWith('data:image/')) {
+      return 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80';
+    }
+    return str.slice(0, 48000);
+  }
+  return str;
 }
 
 const HEADERS = [
@@ -86,23 +103,37 @@ export async function createOricciaSpreadsheet(
     const spreadsheetId = createdData.spreadsheetId;
     const spreadsheetUrl = createdData.spreadsheetUrl;
 
-    // Prepare rows for Catalogo_Productos
+    // Upload any base64 images to Google Drive first to avoid cell character limit
+    for (const p of initialProducts) {
+      if (p.photoUrl && p.photoUrl.startsWith('data:image/')) {
+        try {
+          const uploadRes = await uploadImageToGoogleDrive(accessToken, p.photoUrl, `${p.id}_foto.jpg`);
+          if (uploadRes.success && uploadRes.url) {
+            p.photoUrl = uploadRes.url;
+          }
+        } catch (e) {
+          console.warn('Could not auto-upload initial photo to drive', e);
+        }
+      }
+    }
+
+    // Prepare sanitized rows for Catalogo_Productos
     const productRows = initialProducts.map((p) => [
-      p.id,
-      p.name,
-      p.category,
-      p.eventType,
-      p.price.toString(),
-      p.currency,
-      p.photoUrl,
-      p.description,
-      p.features.join(' | '),
-      p.tags.join(', '),
-      p.demoUrl,
-      p.status,
-      p.updatedAt,
-      p.isFree ? 'SI' : 'NO',
-      p.downloadUrl || '',
+      sanitizeSheetCell(p.id),
+      sanitizeSheetCell(p.name),
+      sanitizeSheetCell(p.category),
+      sanitizeSheetCell(p.eventType),
+      sanitizeSheetCell(p.price.toString()),
+      sanitizeSheetCell(p.currency),
+      sanitizeSheetCell(p.photoUrl, true),
+      sanitizeSheetCell(p.description),
+      sanitizeSheetCell(p.features.join(' | ')),
+      sanitizeSheetCell(p.tags.join(', ')),
+      sanitizeSheetCell(p.demoUrl),
+      sanitizeSheetCell(p.status),
+      sanitizeSheetCell(p.updatedAt),
+      sanitizeSheetCell(p.isFree ? 'SI' : 'NO'),
+      sanitizeSheetCell(p.downloadUrl || ''),
     ]);
 
     const valuesToInsert = [HEADERS, ...productRows];
@@ -332,23 +363,41 @@ export async function saveProductsToSheet(
   try {
     const sheetName = 'Catalogo_Productos';
 
-    // Format rows
+    // Upload any base64 images to Google Drive to obtain permanent, lightweight URLs
+    for (const p of products) {
+      if (p.photoUrl && p.photoUrl.startsWith('data:image/')) {
+        try {
+          const driveResult = await uploadImageToGoogleDrive(
+            accessToken,
+            p.photoUrl,
+            `${p.id || 'producto'}_imagen.jpg`
+          );
+          if (driveResult.success && driveResult.url) {
+            p.photoUrl = driveResult.url;
+          }
+        } catch (uploadErr) {
+          console.warn('Could not auto-upload photo to Google Drive:', uploadErr);
+        }
+      }
+    }
+
+    // Format and sanitize rows to strictly respect Google Sheets' 50,000 character limit per cell
     const rows = products.map((p) => [
-      p.id,
-      p.name,
-      p.category,
-      p.eventType,
-      p.price.toString(),
-      p.currency,
-      p.photoUrl,
-      p.description,
-      p.features.join(' | '),
-      p.tags.join(', '),
-      p.demoUrl,
-      p.status,
-      p.updatedAt,
-      p.isFree ? 'SI' : 'NO',
-      p.downloadUrl || '',
+      sanitizeSheetCell(p.id),
+      sanitizeSheetCell(p.name),
+      sanitizeSheetCell(p.category),
+      sanitizeSheetCell(p.eventType),
+      sanitizeSheetCell(p.price.toString()),
+      sanitizeSheetCell(p.currency),
+      sanitizeSheetCell(p.photoUrl, true),
+      sanitizeSheetCell(p.description),
+      sanitizeSheetCell(p.features.join(' | ')),
+      sanitizeSheetCell(p.tags.join(', ')),
+      sanitizeSheetCell(p.demoUrl),
+      sanitizeSheetCell(p.status),
+      sanitizeSheetCell(p.updatedAt),
+      sanitizeSheetCell(p.isFree ? 'SI' : 'NO'),
+      sanitizeSheetCell(p.downloadUrl || ''),
     ]);
 
     const values = [HEADERS, ...rows];

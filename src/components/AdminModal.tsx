@@ -54,7 +54,18 @@ export function AdminModal({
       }
     } catch (err: any) {
       console.error('Sign in failure:', err);
-      setAuthError(err.message || 'No se pudo completar el inicio de sesión con Google.');
+      if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
+        const currentDomain = typeof window !== 'undefined' ? window.location.hostname : 'tu dominio';
+        setAuthError(
+          `Dominio no autorizado en Firebase (${currentDomain}). Para resolverlo: ingresa a Firebase Console → Authentication → Settings → Authorized Domains (Dominios autorizados) y añade "${currentDomain}".`
+        );
+      } else if (err?.code === 'auth/popup-closed-by-user') {
+        setAuthError('Se cerró la ventana emergente antes de completar el inicio de sesión.');
+      } else if (err?.code === 'auth/popup-blocked') {
+        setAuthError('Tu navegador bloqueó la ventana emergente de Google. Habilita las ventanas emergentes (pop-ups) para continuar.');
+      } else {
+        setAuthError(err.message || 'No se pudo completar el inicio de sesión con Google.');
+      }
     } finally {
       setIsSigningIn(false);
     }
