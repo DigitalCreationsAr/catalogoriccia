@@ -59,6 +59,8 @@ export function AdminPanel({
   const [isEditingProduct, setIsEditingProduct] = useState<boolean>(false);
   const [currentProduct, setCurrentProduct] = useState<Partial<Product> | null>(null);
   const [productModalTab, setProductModalTab] = useState<'standard' | 'free'>('standard');
+  const [featuresInput, setFeaturesInput] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
 
   // Category modal
   const [isAddingCategory, setIsAddingCategory] = useState(false);
@@ -342,6 +344,8 @@ export function AdminPanel({
     const isInv = initialCategory.trim().toLowerCase() === 'invitaciones digitales';
     setImageInputMethod('file');
     setProductModalTab('standard');
+    setFeaturesInput('');
+    setTagsInput('');
     setCurrentProduct({
       id: `oriccia-${Date.now().toString().slice(-4)}`,
       name: '',
@@ -351,12 +355,8 @@ export function AdminPanel({
       currency: 'USD',
       category: initialCategory,
       eventType: isInv ? 'Boda' : '',
-      tags: ['Digital', 'Minimalista', 'Elegante'],
-      features: [
-        'Hipervínculos interactivos fluidos',
-        'Diseño responsivo para móviles y tablets',
-        'Botón de confirmación de asistencia (RSVP)',
-      ],
+      tags: [],
+      features: [],
       demoUrl: '',
       downloadUrl: '',
       isFree: false,
@@ -368,6 +368,8 @@ export function AdminPanel({
 
   const handleOpenEditProduct = (prod: Product) => {
     setCurrentProduct({ ...prod });
+    setFeaturesInput(Array.isArray(prod.features) ? prod.features.join('\n') : '');
+    setTagsInput(Array.isArray(prod.tags) ? prod.tags.join(', ') : '');
     if (prod.isFree || (prod.price === 0 && Boolean(prod.downloadUrl))) {
       setProductModalTab('free');
     } else {
@@ -423,6 +425,16 @@ export function AdminPanel({
     const index = updatedList.findIndex((p) => p.id === currentProduct.id);
     const isInvitacion = currentProduct.category?.trim().toLowerCase() === 'invitaciones digitales';
 
+    const parsedFeatures = featuresInput
+      .split('\n')
+      .map((f) => f.trim())
+      .filter(Boolean);
+
+    const parsedTags = tagsInput
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+
     const readyProduct: Product = {
       id: currentProduct.id || `oriccia-${Date.now().toString().slice(-4)}`,
       name: currentProduct.name || (isFree ? 'Nuevo Recurso Gratuito' : 'Nuevo Producto'),
@@ -432,8 +444,8 @@ export function AdminPanel({
       currency: currentProduct.currency || 'USD',
       category: currentProduct.category || (isFree ? 'Freebies & Imprimibles' : 'Invitaciones Digitales'),
       eventType: !isFree && isInvitacion ? (currentProduct.eventType || 'Boda') : '',
-      tags: Array.isArray(currentProduct.tags) ? currentProduct.tags : [],
-      features: Array.isArray(currentProduct.features) ? currentProduct.features : [],
+      tags: parsedTags,
+      features: parsedFeatures,
       demoUrl: currentProduct.demoUrl || '',
       downloadUrl: currentProduct.downloadUrl || '',
       isFree: isFree,
@@ -1439,21 +1451,13 @@ export function AdminPanel({
                   {/* Features */}
                   <div>
                     <label className="text-xs font-semibold text-[#1C3B2B] block mb-1">
-                      Funciones destacadas (una por línea):
+                      Funciones destacadas (opcional, una por línea):
                     </label>
                     <textarea
                       rows={3}
-                      value={currentProduct.features ? currentProduct.features.join('\n') : ''}
-                      onChange={(e) =>
-                        setCurrentProduct({
-                          ...currentProduct,
-                          features: e.target.value
-                            .split('\n')
-                            .map((f) => f.trim())
-                            .filter(Boolean),
-                        })
-                      }
-                      placeholder="Hipervínculos entre meses y días&#10;Compatibilidad con GoodNotes&#10;Incluye set de stickers botánicos"
+                      value={featuresInput}
+                      onChange={(e) => setFeaturesInput(e.target.value)}
+                      placeholder="Opcional. Puedes dejar este campo vacío o agregar detalles puntuales..."
                       className="w-full px-3 py-2 text-xs bg-white border border-[#E8E1D7] rounded-lg focus:outline-none focus:border-[#1C3B2B]"
                     />
                   </div>
@@ -1465,17 +1469,9 @@ export function AdminPanel({
                     </label>
                     <input
                       type="text"
-                      value={currentProduct.tags ? currentProduct.tags.join(', ') : ''}
-                      onChange={(e) =>
-                        setCurrentProduct({
-                          ...currentProduct,
-                          tags: e.target.value
-                            .split(',')
-                            .map((t) => t.trim())
-                            .filter(Boolean),
-                        })
-                      }
-                      placeholder="GoodNotes, Notability, Imprimible, 2025"
+                      value={tagsInput}
+                      onChange={(e) => setTagsInput(e.target.value)}
+                      placeholder="Opcional. Ej: Digital, Flores, Fiesta"
                       className="w-full px-3 py-2 text-xs bg-white border border-[#E8E1D7] rounded-lg focus:outline-none focus:border-[#1C3B2B]"
                     />
                   </div>
@@ -1584,21 +1580,13 @@ export function AdminPanel({
                   {/* Features / Functions */}
                   <div>
                     <label className="text-xs font-semibold text-[#1C3B2B] block mb-1">
-                      Funciones y contenido incluido (una por línea):
+                      Funciones y contenido incluido (opcional, una por línea):
                     </label>
                     <textarea
                       rows={3}
-                      value={currentProduct.features ? currentProduct.features.join('\n') : ''}
-                      onChange={(e) =>
-                        setCurrentProduct({
-                          ...currentProduct,
-                          features: e.target.value
-                            .split('\n')
-                            .map((f) => f.trim())
-                            .filter(Boolean),
-                        })
-                      }
-                      placeholder="Archivo digital descargable en alta resolución&#10;Compatible con GoodNotes, Notability y tablets&#10;Licencia de uso personal incluida"
+                      value={featuresInput}
+                      onChange={(e) => setFeaturesInput(e.target.value)}
+                      placeholder="Opcional. Puedes dejar este campo vacío o especificar detalles..."
                       className="w-full px-3 py-2 text-xs bg-white border border-[#E8E1D7] rounded-lg focus:outline-none focus:border-[#1C3B2B]"
                     />
                   </div>
@@ -1610,17 +1598,9 @@ export function AdminPanel({
                     </label>
                     <input
                       type="text"
-                      value={currentProduct.tags ? currentProduct.tags.join(', ') : ''}
-                      onChange={(e) =>
-                        setCurrentProduct({
-                          ...currentProduct,
-                          tags: e.target.value
-                            .split(',')
-                            .map((t) => t.trim())
-                            .filter(Boolean),
-                        })
-                      }
-                      placeholder="Freebie, Imprimible, Regalo, Stickers, PDF"
+                      value={tagsInput}
+                      onChange={(e) => setTagsInput(e.target.value)}
+                      placeholder="Opcional. Ej: Freebie, Imprimible, Regalo"
                       className="w-full px-3 py-2 text-xs bg-white border border-[#E8E1D7] rounded-lg focus:outline-none focus:border-[#1C3B2B]"
                     />
                   </div>

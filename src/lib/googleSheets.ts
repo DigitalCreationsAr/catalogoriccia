@@ -499,15 +499,11 @@ export async function fetchPublicProductsFromSheet(
       const featuresStr = getVal(8);
       const features = featuresStr
         ? featuresStr.split('|').map((f) => f.trim()).filter(Boolean)
-        : [
-            'Hipervínculos interactivos fluidos',
-            'Diseño responsivo para móviles y tablets',
-            'Botón de confirmación de asistencia (RSVP)',
-          ];
+        : [];
       const tagsStr = getVal(9);
       const tags = tagsStr
         ? tagsStr.split(',').map((t) => t.trim()).filter(Boolean)
-        : ['Digital', 'Minimalista', 'Elegante'];
+        : [];
       const demoUrl = getVal(10) || '';
       const rawStatus = (getVal(11) || 'activo').toLowerCase();
       const status: 'activo' | 'borrador' = rawStatus === 'borrador' ? 'borrador' : 'activo';

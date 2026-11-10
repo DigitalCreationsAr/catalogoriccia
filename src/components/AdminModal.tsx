@@ -142,11 +142,6 @@ export function AdminModal({
                   <span>Protegido por Google Auth y Google Workspace</span>
                 </div>
               </div>
-
-              <div className="p-3.5 bg-[#F5EFEB] rounded-xl border border-[#E8E1D7] text-left text-[11px] text-[#6B726C] w-full">
-                <span className="font-semibold text-[#1C3B2B] block mb-0.5">Nota de Privacidad y Permisos:</span>
-                Al iniciar sesión, se solicitarán permisos para vincular tu hoja de cálculo en Google Sheets y administrar los productos de Oriccia de forma segura.
-              </div>
             </div>
           )}
 
