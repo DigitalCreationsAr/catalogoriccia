@@ -26,9 +26,11 @@ import { OricciaLogo } from './OricciaLogo';
 import {
   createOricciaSpreadsheet,
   fetchProductsFromSheet,
+  fetchPublicProductsFromSheet,
   saveProductsToSheet,
 } from '../lib/googleSheets';
 import { uploadImageToGoogleDrive } from '../lib/googleDrive';
+import { googleSignIn } from '../lib/firebase';
 
 interface AdminPanelProps {
   user: User;
@@ -41,6 +43,7 @@ interface AdminPanelProps {
   onUpdateSettings: (settings: AdminSettings) => void;
   onLogout: () => void;
   onClose: () => void;
+  onRefreshToken?: (newToken: string) => void;
 }
 
 export function AdminPanel({
@@ -54,6 +57,7 @@ export function AdminPanel({
   onUpdateSettings,
   onLogout,
   onClose,
+  onRefreshToken,
 }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<'productos' | 'categorias' | 'sheets' | 'ajustes'>('productos');
   const [isEditingProduct, setIsEditingProduct] = useState<boolean>(false);
@@ -385,6 +389,31 @@ export function AdminPanel({
     setIsEditingProduct(true);
   };
 
+  const handleReconnectGoogle = async (): Promise<string | null> => {
+    try {
+      setIsSyncing(true);
+      setSyncStatusMsg(null);
+      const res = await googleSignIn();
+      if (res?.accessToken) {
+        if (onRefreshToken) onRefreshToken(res.accessToken);
+        setSyncStatusMsg({
+          type: 'success',
+          text: '¡Sesión de Google Workspace renovada con éxito!',
+        });
+        return res.accessToken;
+      }
+    } catch (err: any) {
+      console.error('Reconnect failure:', err);
+      setSyncStatusMsg({
+        type: 'error',
+        text: `No se pudo conectar con Google: ${err?.message || 'Ventana emergente cerrada'}`,
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+    return null;
+  };
+
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentProduct?.name) return;
@@ -464,14 +493,46 @@ export function AdminPanel({
     setCurrentProduct(null);
 
     // Auto push to sheets if sheet is linked
-    if (token && settings.spreadsheetId) {
-      saveProductsToSheet(token, settings.spreadsheetId, updatedList)
-        .then((res) => {
-          if (res.success) {
-            onUpdateProducts([...updatedList]);
-          }
-        })
-        .catch(console.error);
+    if (settings.spreadsheetId) {
+      if (token) {
+        setIsSyncing(true);
+        setSyncStatusMsg({
+          type: 'success',
+          text: 'Guardando cambios en el catálogo y enviando a Google Sheets...',
+        });
+        saveProductsToSheet(token, settings.spreadsheetId, updatedList)
+          .then((res) => {
+            setIsSyncing(false);
+            if (res.success) {
+              onUpdateProducts([...updatedList]);
+              onUpdateSettings({
+                ...settings,
+                lastSyncTime: new Date().toLocaleTimeString('es-ES'),
+              });
+              setSyncStatusMsg({
+                type: 'success',
+                text: '¡Producto guardado y sincronizado en Google Sheets con éxito!',
+              });
+            } else {
+              setSyncStatusMsg({
+                type: 'error',
+                text: `Producto guardado en tu catálogo local. Error al escribir en Google Sheets: ${res.error}. Para renovar permisos, haz clic en "Conectar Google" en la pestaña de Google Sheets.`,
+              });
+            }
+          })
+          .catch((err) => {
+            setIsSyncing(false);
+            setSyncStatusMsg({
+              type: 'error',
+              text: `Guardado en catálogo local. Error de red con Google Sheets: ${err?.message || ''}`,
+            });
+          });
+      } else {
+        setSyncStatusMsg({
+          type: 'error',
+          text: 'Producto guardado en tu catálogo. Para enviarlo a Google Sheets, haz clic en "Conectar con Google Workspace" en la pestaña de Google Sheets.',
+        });
+      }
     }
   };
 
@@ -577,7 +638,7 @@ export function AdminPanel({
   };
 
   const handlePullFromSheet = async () => {
-    if (!token || !settings.spreadsheetId) {
+    if (!settings.spreadsheetId) {
       setSyncStatusMsg({
         type: 'error',
         text: 'Debes tener una planilla vinculada para descargar los productos.',
@@ -588,7 +649,16 @@ export function AdminPanel({
     setIsSyncing(true);
     setSyncStatusMsg(null);
 
-    const result = await fetchProductsFromSheet(token, settings.spreadsheetId);
+    let result;
+    if (token) {
+      result = await fetchProductsFromSheet(token, settings.spreadsheetId);
+    }
+
+    // If no token or authenticated fetch failed, use live public fetcher
+    if (!result || !result.success) {
+      result = await fetchPublicProductsFromSheet(settings.spreadsheetId);
+    }
+
     setIsSyncing(false);
 
     if (result.success && result.data) {
@@ -624,10 +694,18 @@ export function AdminPanel({
       message: `Se sobrescribirán las filas de la planilla de Google Sheets con los ${products.length} productos actuales del catálogo. ¿Deseas continuar?`,
       confirmLabel: 'Actualizar Planilla',
       action: async () => {
-        if (!token) return;
+        let activeToken = token;
+        if (!activeToken) {
+          activeToken = await handleReconnectGoogle();
+          if (!activeToken) {
+            setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+            return;
+          }
+        }
+
         setIsSyncing(true);
         setSyncStatusMsg(null);
-        const result = await saveProductsToSheet(token, settings.spreadsheetId, products);
+        const result = await saveProductsToSheet(activeToken, settings.spreadsheetId, products);
         setIsSyncing(false);
         setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
 
@@ -778,6 +856,26 @@ export function AdminPanel({
           </button>
         ))}
       </div>
+
+      {/* Session token notice */}
+      {!token && (
+        <div className="mx-6 mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+            <span>
+              Para que los cambios que hagas aquí se guarden directamente en tu hoja de Google Sheets, renueva tu conexión de Google Workspace.
+            </span>
+          </div>
+          <button
+            onClick={handleReconnectGoogle}
+            disabled={isSyncing}
+            className="px-3 py-1.5 bg-amber-800 text-white hover:bg-amber-900 rounded-lg text-xs font-semibold shrink-0 flex items-center gap-1.5 transition-colors shadow-xs"
+          >
+            <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+            Conectar Google Workspace
+          </button>
+        </div>
+      )}
 
       {/* Feedback banner */}
       {syncStatusMsg && (
@@ -995,7 +1093,24 @@ export function AdminPanel({
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {!token ? (
+                  <button
+                    onClick={handleReconnectGoogle}
+                    disabled={isSyncing}
+                    className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                    title="Conectar con Google para permitir guardar cambios directamente en Sheets"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                    Conectar Google Workspace
+                  </button>
+                ) : (
+                  <span className="px-2.5 py-1.5 bg-[#EBF0EC] text-[#1C3B2B] text-[11px] font-medium rounded-lg flex items-center gap-1 border border-[#2B523E]/20">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                    Permisos de Sheets Activos
+                  </span>
+                )}
+
                 {!settings.spreadsheetId ? (
                   <button
                     onClick={handleCreateSheetPrompt}
@@ -1011,6 +1126,7 @@ export function AdminPanel({
                       onClick={handlePullFromSheet}
                       disabled={isSyncing}
                       className="px-3.5 py-2 bg-white hover:bg-[#F5EFEB] border border-[#E8E1D7] text-[#1C3B2B] rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors"
+                      title="Descargar los productos más recientes desde la planilla"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
                       Descargar de Sheets
@@ -1019,6 +1135,7 @@ export function AdminPanel({
                       onClick={handlePushToSheetPrompt}
                       disabled={isSyncing}
                       className="px-3.5 py-2 bg-[#1C3B2B] text-[#FAF7F2] hover:bg-[#152D1F] rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+                      title="Subir todos los productos actuales a la planilla"
                     >
                       <Upload className="w-3.5 h-3.5" />
                       Subir y Actualizar Sheets

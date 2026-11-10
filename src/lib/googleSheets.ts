@@ -458,8 +458,15 @@ export async function fetchPublicProductsFromSheet(
   }
 
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=Catalogo_Productos`;
-    const res = await fetch(url);
+    const timestamp = Date.now();
+    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=Catalogo_Productos&tq=select%20*&_ts=${timestamp}`;
+    const res = await fetch(url, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
+      },
+    });
     if (!res.ok) {
       return { success: false, error: 'No se pudo acceder a la planilla pública.' };
     }

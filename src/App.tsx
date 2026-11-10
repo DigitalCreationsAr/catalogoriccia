@@ -10,7 +10,7 @@ import { ProductDetailModal } from './components/ProductDetailModal';
 import { InteractiveDemoModal } from './components/InteractiveDemoModal';
 import { AdminModal } from './components/AdminModal';
 import { OricciaLogo } from './components/OricciaLogo';
-import { Heart, Filter, ChevronRight, Lock } from 'lucide-react';
+import { Heart, Filter, ChevronRight, Lock, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -94,10 +94,13 @@ export default function App() {
   const [demoProduct, setDemoProduct] = useState<Product | null>(null);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
-  // Auto-sync products from public Google Sheet on load (for incognito, new visitors, and mobile)
-  useEffect(() => {
+  // Live sync products from Google Sheet (works in incognito, mobile, and normal browsing)
+  const refreshCatalogFromSheet = (customSheetId?: string) => {
     const sheetId =
-      settings.spreadsheetId || INITIAL_SETTINGS.spreadsheetId || '1oHNcbXnSOKVdzLEucmrr5WVlYbONrIlBzJVt36ztXws';
+      customSheetId ||
+      settings.spreadsheetId ||
+      INITIAL_SETTINGS.spreadsheetId ||
+      '1oHNcbXnSOKVdzLEucmrr5WVlYbONrIlBzJVt36ztXws';
     if (!sheetId) return;
 
     setIsLoadingPublicCatalog(true);
@@ -113,11 +116,15 @@ export default function App() {
         }
       })
       .catch((err) => {
-        console.warn('Could not auto-sync catalog from public sheet:', err);
+        console.warn('Could not sync catalog from public sheet:', err);
       })
       .finally(() => {
         setIsLoadingPublicCatalog(false);
       });
+  };
+
+  useEffect(() => {
+    refreshCatalogFromSheet(settings.spreadsheetId);
   }, [settings.spreadsheetId]);
 
   // Initialize Firebase Auth listener
@@ -248,9 +255,20 @@ export default function App() {
               <span className="w-1.5 h-1.5 rounded-full bg-[#C48B8B]" />
               Explorar por Categoría
             </h2>
-            <span className="text-xs text-[#8C948D] font-serif italic">
-              {filteredProducts.length} {filteredProducts.length === 1 ? 'artículo' : 'artículos'}
-            </span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => refreshCatalogFromSheet()}
+                disabled={isLoadingPublicCatalog}
+                className="text-[11px] text-[#6B726C] hover:text-[#1C3B2B] flex items-center gap-1.5 transition-colors px-2 py-1 rounded-lg hover:bg-white border border-transparent hover:border-[#E8E1D7]"
+                title="Actualizar catálogo en vivo desde Google Sheets"
+              >
+                <RefreshCw className={`w-3 h-3 ${isLoadingPublicCatalog ? 'animate-spin text-[#1C3B2B]' : ''}`} />
+                <span>{isLoadingPublicCatalog ? 'Actualizando...' : 'Actualizar'}</span>
+              </button>
+              <span className="text-xs text-[#8C948D] font-serif italic">
+                {filteredProducts.length} {filteredProducts.length === 1 ? 'artículo' : 'artículos'}
+              </span>
+            </div>
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">

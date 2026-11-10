@@ -194,6 +194,7 @@ export function AdminModal({
               onUpdateSettings={onUpdateSettings}
               onLogout={handleLogout}
               onClose={onClose}
+              onRefreshToken={(newToken) => onAuthSuccess(currentUser, newToken)}
             />
           )}
         </motion.div>
