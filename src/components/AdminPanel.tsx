@@ -501,7 +501,13 @@ export function AdminPanel({
           text: 'Guardando cambios en el catálogo y enviando a Google Sheets...',
         });
         saveProductsToSheet(token, settings.spreadsheetId, updatedList)
-          .then((res) => {
+          .then(async (res) => {
+            if (!res.success && res.isAuthError) {
+              const freshToken = await handleReconnectGoogle();
+              if (freshToken) {
+                res = await saveProductsToSheet(freshToken, settings.spreadsheetId, updatedList);
+              }
+            }
             setIsSyncing(false);
             if (res.success) {
               onUpdateProducts([...updatedList]);
@@ -704,8 +710,17 @@ export function AdminPanel({
         }
 
         setIsSyncing(true);
-        setSyncStatusMsg(null);
-        const result = await saveProductsToSheet(activeToken, settings.spreadsheetId, products);
+        setSyncStatusMsg({
+          type: 'success',
+          text: 'Enviando catálogo actualizado a Google Sheets...',
+        });
+        let result = await saveProductsToSheet(activeToken, settings.spreadsheetId, products);
+        if (!result.success && result.isAuthError) {
+          const freshToken = await handleReconnectGoogle();
+          if (freshToken) {
+            result = await saveProductsToSheet(freshToken, settings.spreadsheetId, products);
+          }
+        }
         setIsSyncing(false);
         setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
 
@@ -717,7 +732,7 @@ export function AdminPanel({
           });
           setSyncStatusMsg({
             type: 'success',
-            text: 'Planilla actualizada correctamente con los productos de Oriccia.',
+            text: '¡Planilla de Google Sheets actualizada correctamente con todos los productos!',
           });
         } else {
           setSyncStatusMsg({

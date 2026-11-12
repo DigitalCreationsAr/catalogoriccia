@@ -5,6 +5,7 @@ export interface SheetOperationResult<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+  isAuthError?: boolean;
 }
 
 /**
@@ -275,8 +276,16 @@ export async function fetchProductsFromSheet(
       }
     );
 
+    if (res.status === 401 || res.status === 403) {
+      return {
+        success: false,
+        error: 'Tu sesión con Google ha expirado o no tiene permisos de lectura.',
+        isAuthError: true,
+      };
+    }
+
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       return {
         success: false,
         error: err.error?.message || 'Error al leer las filas de productos.',
@@ -300,14 +309,14 @@ export async function fetchProductsFromSheet(
         const features = row[8]
           ? row[8]
               .toString()
-              .split('|')
+              .split(/[|\n]/)
               .map((f: string) => f.trim())
-              .filter(Boolean)
+              .filter((f: string) => Boolean(f) && f !== '.')
           : [];
         const tags = row[9]
           ? row[9]
               .toString()
-              .split(',')
+              .split(/[,;|]/)
               .map((t: string) => t.trim())
               .filter(Boolean)
           : [];
@@ -403,7 +412,7 @@ export async function saveProductsToSheet(
     const values = [HEADERS, ...rows];
 
     // Clear previous rows
-    await fetch(
+    const clearRes = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A1:O500:clear`,
       {
         method: 'POST',
@@ -413,6 +422,14 @@ export async function saveProductsToSheet(
         },
       }
     );
+
+    if (clearRes.status === 401 || clearRes.status === 403) {
+      return {
+        success: false,
+        error: 'Tu sesión con Google ha expirado o no tiene permisos de edición en la planilla.',
+        isAuthError: true,
+      };
+    }
 
     // Write updated values
     const res = await fetch(
@@ -429,8 +446,16 @@ export async function saveProductsToSheet(
       }
     );
 
+    if (res.status === 401 || res.status === 403) {
+      return {
+        success: false,
+        error: 'Tu sesión con Google ha expirado o no tiene permisos de edición en la planilla.',
+        isAuthError: true,
+      };
+    }
+
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       return {
         success: false,
         error: err.error?.message || 'Error al guardar los productos en Google Sheets.',
@@ -505,20 +530,30 @@ export async function fetchPublicProductsFromSheet(
       const description = getVal(7) || '';
       const featuresStr = getVal(8);
       const features = featuresStr
-        ? featuresStr.split('|').map((f) => f.trim()).filter(Boolean)
+        ? featuresStr
+            .split(/[|\n]/)
+            .map((f) => f.trim())
+            .filter((f) => Boolean(f) && f !== '.')
         : [];
       const tagsStr = getVal(9);
       const tags = tagsStr
-        ? tagsStr.split(',').map((t) => t.trim()).filter(Boolean)
+        ? tagsStr
+            .split(/[,;|]/)
+            .map((t) => t.trim())
+            .filter(Boolean)
         : [];
       const demoUrl = getVal(10) || '';
       const rawStatus = (getVal(11) || 'activo').toLowerCase();
       const status: 'activo' | 'borrador' = rawStatus === 'borrador' ? 'borrador' : 'activo';
       const updatedAt = getVal(12) || new Date().toISOString().split('T')[0];
       const isFreeStr = getVal(13).toUpperCase();
-      const isFree =
-        isFreeStr === 'SI' || isFreeStr === 'SÍ' || isFreeStr === 'TRUE' || isFreeStr === '1';
       const downloadUrl = getVal(14) || '';
+      const isFree =
+        isFreeStr === 'SI' ||
+        isFreeStr === 'SÍ' ||
+        isFreeStr === 'TRUE' ||
+        isFreeStr === '1' ||
+        (price === 0 && Boolean(downloadUrl));
 
       products.push({
         id,
